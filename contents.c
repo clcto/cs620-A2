@@ -1,8 +1,17 @@
-/*  Scott Valcourt
-    CS620
-    February 10, 2011  */
-
-/*  program to do "ls -i1 path" in a POSIX compliant manner */
+/* 
+ * CS620 - A2
+ *    list the items in directories passed in at the
+ *    command line.
+ *
+ *  Carick Wienke
+ *  2011.02.24
+ *
+ *  Code was derived from 'lsi1.c' by Scott Valcourt
+ *
+ *  Code to convert to mode_t to a string is done in
+ *  strmode.c. This file is from Apple:
+ *  http://www.opensource.apple.com/source/Libc/Libc-166/string.subproj/strmode.c
+ */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -61,6 +70,7 @@ void list_dir( char *path )
    if( status == NULL ) // true if realpath fails
    {
       perror( path );
+      fprintf( stderr, "\n" );
       return;
    }
 
@@ -68,6 +78,7 @@ void list_dir( char *path )
    if( directory == NULL )
    {
       perror( path );
+      fprintf( stderr, "\n" );
       return;
    }
 
@@ -87,15 +98,23 @@ void list_dir( char *path )
       errno = 0;
    }
    if( errno )
+   {
       perror( "readdir" );
+      fprintf( stderr, "\n" );
+   }
    if( closedir( directory ) )
+   {
       perror( "closedir" );
+      fprintf( stderr, "\n" );
+   }
+
 
       // reopen to actually read now
    directory = opendir( abs_path );
    if( directory == NULL )
    {
       perror( path );
+      fprintf( stderr, "\n" );
       return;
    }
 
@@ -105,36 +124,46 @@ void list_dir( char *path )
    errno = 0;
    while( ( entry = readdir( directory ) ) )
    {
-      if( entry->d_name[0] == '.' )
-         continue;
-      
-      strcpy( files[ i ].name, entry->d_name );
-      files[i].inode = entry->d_ino;
-      
-      struct stat entry_stats;
-      stat( path, &entry_stats );
+      if( entry->d_name[0] != '.' )
+      { 
+            // get the name from the dirent struct
+         strcpy( files[ i ].name, entry->d_name );
+         
+         struct stat entry_stats;
+         
+            // get the other info from the stat struct 
+         char full_name[NAME_MAX];
+         sprintf( full_name, "%s/%s", path, files[i].name );
+         stat( full_name, &entry_stats );
 
-      files[i].size = entry_stats.st_size;
-      files[i].mtime = entry_stats.st_mtime;
-      files[i].mode = entry_stats.st_mode;
-      printf( "... %d ...\n", S_ISDIR(entry_stats.st_mode) );
+         files[i].size = entry_stats.st_size;
+         files[i].mtime = entry_stats.st_mtime;
+         files[i].mode = entry_stats.st_mode;
 
-      files[i].uid = entry_stats.st_uid;
-      files[i].gid = entry_stats.st_gid;
-      
-      ++i;
+         files[i].uid = entry_stats.st_uid;
+         files[i].gid = entry_stats.st_gid;
+         files[i].inode = entry_stats.st_ino;
+         
+         ++i;
+      }
       errno = 0;
    }
    if( errno )
+   {
       perror( "readdir" );
+      fprintf( stderr, "\n" );
+   }
    if( closedir( directory ) )
+   {
       perror( "closedir" );
+      fprintf( stderr, "\n" );
+   }
 
 
    qsort( files, file_count, sizeof( compiled_stats_t ),
           stat_cmp );
    
-   printf( "%s\n", abs_path );
+   printf( "%s\n\n", abs_path );
    for( i = 0; i < file_count; ++i )
       print_stat( &files[i] );
 }
@@ -146,11 +175,18 @@ void print_stat( const compiled_stats_t const * stats )
 
    struct passwd* user_info = getpwuid( stats->uid );
    struct group* group_info = getgrgid( stats->gid );
-   printf( "--- %d ---\n", S_ISDIR( stats->mode ) );
-   printf( "   Relative Name ...... %s\n", stats->name );
+   printf( "   Relative Name ...... %s", stats->name );
+      
+      // add '/' if it is a dir
+   if( S_ISDIR( stats->mode ) )
+      printf( "/\n" );
+   else
+      printf( "\n" );
+
    printf( "   Inode Number ....... %ld\n", stats->inode );
 
-
+      // add (self) if gid or uid is the currently 
+      // running user/group
    if( stats->uid == getuid() )
       printf( "   Owner .............. %s (self)\n", user_info->pw_name );
    else
@@ -171,6 +207,8 @@ void print_stat( const compiled_stats_t const * stats )
 
 }
 
+   // compare two compiled_stats_t (for qsort)
+   // returns based on the name of the file
 int stat_cmp( const void *elem1, const void *elem2 )
 {
    compiled_stats_t *stats1 = (compiled_stats_t*) elem1;
